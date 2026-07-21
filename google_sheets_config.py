@@ -1,86 +1,89 @@
 """
-ملف إعدادات الاتصال بـ Google Sheets (للعمل مع Streamlit Cloud)
+ملف إعدادات الاتصال بـ Google Sheets (معدل خصيصاً للعمل مع Streamlit Cloud)
 """
 
 import gspread
 from google.oauth2.service_account import Credentials
-import os
-import json
 import streamlit as st
 
-# معرف الـ Google Sheet (يمكن ضبطه عبر متغير البيئة أو secrets)
-SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", st.secrets.get("google", {}).get("sheet_id", "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg"))
+# 1. معرف الـ Google Sheet
+try:
+    SHEET_ID = st.secrets["google"]["sheet_id"]
+except:
+    # القيمة الافتراضية إذا لم يتم وضعها في الـ secrets
+    SHEET_ID = "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg"
 
-# مسار ملف credentials (من secrets)
-CREDENTIALS_FILE = st.secrets.get("google", {}).get("credentials_path", "credentials.json")
-
-# أسماء أوراق العمل داخل الـ Sheet
+# 2. أسماء أوراق العمل داخل الـ Sheet
 SALES_WORKSHEET = "Sales"              # صفحة المبيعات
 PRODUCTS_WORKSHEET = "Menu"            # صفحة المنيو
 DAILY_SUMMARY_WORKSHEET = "Daily_Summary"  # الملخص اليومي
 CATEGORIES_WORKSHEET = "Categories"    # التصنيفات
 EXPENSES_WORKSHEET = "Expenses"        # المصروفات
 
-# نطاقات الصلاحيات المطلوبة
+# 3. نطاقات الصلاحيات المطلوبة
 SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets"
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
 ]
 
-# متغير عام لتخزين العميل (لمنع إعادة الاتصال المتكرر)
-_client = None
-_spreadsheet = None
-
-def get_credentials():
-    """الحصول على بيانات الاعتماد من ملف credentials.json"""
-    global CREDENTIALS_FILE
-    
+@st.cache_resource
+def get_client():
+    """الحصول على عميل Google Sheets والاتصال به بشكل صحيح (مع تخزين مؤقت لتسريع التطبيق)"""
     try:
-        # التحقق مما إذا كان الملف موجوداً
-        if not os.path.exists(CREDENTIALS_FILE):
-            print(f"⚠️ ملف credentials.json غير موجود: {CREDENTIALS_FILE}")
+        # التأكد من وجود البيانات في Streamlit Secrets
+        if "gcp_service_account" not in st.secrets:
+            st.error("❌ لم يتم العثور على [gcp_service_account] في إعدادات Secrets")
             return None
+            
+        # تحويل بيانات الاعتماد إلى قاموس
+        creds_dict = dict(st.secrets["gcp_service_account"])
         
-        # قراءة الملف كـ JSON
-        with open(CREDENTIALS_FILE, 'r', encoding='utf-8') as f:
-            creds_data = json.load(f)
+        # 🚨 الحل الجذري لمشكلة Invalid JWT Signature 🚨
+        # استبدال النص العادي "\n" بالرمز الفعلي للنزول للسطر في المفتاح الخاص
+        if "\\n" in creds_dict.get("private_key", ""):
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
+        # إنشاء كائن الاعتماد
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         
-        # التحقق من وجود private_key
-        if "private_key" not in creds_data:
-            print("⚠️ لم يتم العثور على private_key في credentials.json")
-            return None
-        
-        # إنشاء Credentials
-        creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
-        return creds
+        # الاتصال بمكتبة gspread
+        client = gspread.authorize(creds)
+        return client
         
     except Exception as e:
-        print(f"❌ خطأ في قراءة credentials: {e}")
+        st.error(f"❌ خطأ في إعداد بيانات الاعتماد: {e}")
         return None
 
-def get_client():
-    """الحصول على عميل Google Sheets (مع التخزين المؤقت)"""
-    global _client
-    
-    if _client is not None:
-        return _client
-    
-    creds = get_credentials()
-    if creds is None:
-        raise RuntimeError("❌ لم يتم العثور على بيانات اعتماد Google Sheets")
-    
-    _client = gspread.authorize(creds)
-    return _client
-
 def get_spreadsheet():
-    """الحصول على الـ Spreadsheet (مع التخزين المؤقت)"""
-    global _spreadsheet
-    
-    if _spreadsheet is not None:
-        return _spreadsheet
-    
+    """الحصول على ملف الـ Spreadsheet"""
     client = get_client()
-    _spreadsheet = client.open_by_key(SHEET_ID)
-    return _spreadsheet
+    if client:
+        return client.open_by_key(SHEET_ID)
+    return None
+
+def get_worksheet(worksheet_name, default_headers):
+    """الحصول على ورقة عمل مع إنشائها تلقائياً إذا لم تكن موجودة"""
+    try:
+        spreadsheet = get_spreadsheet()
+        if not spreadsheet:
+            return None
+            
+        try:
+            worksheet = spreadsheet.worksheet(worksheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            # إنشاء الورقة إذا لم تكن موجودة ووضع العناوين الأساسية
+            worksheet = spreadsheet.add_worksheet(
+                title=worksheet_name,
+                rows=1000,
+                cols=len(default_headers)
+            )
+            worksheet.append_row(default_headers)
+        
+        return worksheet
+        
+    except Exception as e:
+        st.error(f"❌ خطأ في الاتصال بصفحة {worksheet_name}: {e}")
+        return None
 
 def get_sales_worksheet():
     """الحصول على ورقة المبيعات"""
@@ -102,45 +105,22 @@ def get_expenses_worksheet():
     """الحصول على ورقة المصروفات"""
     return get_worksheet(EXPENSES_WORKSHEET, ["التاريخ", "البند", "التصنيف", "المبلغ", "ملاحظات"])
 
-def get_worksheet(worksheet_name, default_headers):
-    """
-    الحصول على ورقة عمل مع إنشائها إذا لم تكن موجودة
-    """
-    try:
-        spreadsheet = get_spreadsheet()
-        
-        try:
-            worksheet = spreadsheet.worksheet(worksheet_name)
-        except gspread.exceptions.WorksheetNotFound:
-            worksheet = spreadsheet.add_worksheet(
-                title=worksheet_name,
-                rows=1000,
-                cols=len(default_headers)
-            )
-            worksheet.append_row(default_headers)
-        
-        return worksheet
-        
-    except Exception as e:
-        st.error(f"❌ خطأ في الاتصال بـ Google Sheets: {e}")
-        raise
-
 def reset_connection():
-    """إعادة تعيين الاتصال (للاستخدام عند الحاجة)"""
-    global _client, _spreadsheet
-    _client = None
-    _spreadsheet = None
+    """إعادة تعيين الاتصال وتفريغ الذاكرة المؤقتة"""
+    get_client.clear()
+    st.cache_resource.clear()
 
 def test_connection():
     """اختبار الاتصال بـ Google Sheets"""
     try:
         worksheet = get_sales_worksheet()
-        print("✅ تم الاتصال بـ Google Sheets بنجاح!")
-        return True
+        if worksheet:
+            print("✅ تم الاتصال بـ Google Sheets بنجاح!")
+            return True
+        return False
     except Exception as e:
         print(f"❌ فشل الاتصال: {e}")
         return False
-
 
 if __name__ == "__main__":
     test_connection()
