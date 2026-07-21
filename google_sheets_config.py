@@ -1,15 +1,16 @@
 """
-ملف إعدادات الاتصال بـ Google Sheets (معدل لمعالجة خطأ PEM File / InvalidByte)
+ملف إعدادات الاتصال بـ Google Sheets (معالج تلقائي لخطأ InvalidByte والرموز الزائدة)
 """
 
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit as st
+import re
 
 # 1. معرف الـ Google Sheet
 try:
     SHEET_ID = st.secrets["google"]["sheet_id"]
-except:
+except Exception:
     SHEET_ID = "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg"
 
 # 2. أسماء أوراق العمل
@@ -27,7 +28,7 @@ SCOPES = [
 
 @st.cache_resource
 def get_client():
-    """الحصول على عميل Google Sheets مع تنظيف تلقائي للمفتاح الخاص"""
+    """الحصول على عميل Google Sheets وتنقيتها من أي رموز غريبة"""
     try:
         if "gcp_service_account" not in st.secrets:
             st.error("❌ لم يتم العثور على [gcp_service_account] في إعدادات Secrets")
@@ -35,23 +36,20 @@ def get_client():
             
         creds_dict = dict(st.secrets["gcp_service_account"])
         
-        # 🚨 تنظيف ومعالجة المفتاح الخاص (Private Key) لحل خطأ PEM File 🚨
-        private_key = str(creds_dict.get("private_key", "")).strip()
+        # جلب النص الخام للمفتاح
+        raw_key = str(creds_dict.get("private_key", ""))
         
-        # 1. تحويل \\n إلى \n حقيقية
-        private_key = private_key.replace("\\n", "\n")
+        # استبدال \\n بالسطر الجديد الحقيقي
+        raw_key = raw_key.replace("\\n", "\n")
         
-        # 2. قص المفتاح بين BGIN و END بدقة والتخلص من أي رموز أو نقاط زائدة قبله
-        if "-----BEGIN PRIVATE KEY-----" in private_key and "-----END PRIVATE KEY-----" in private_key:
-            start_pos = private_key.find("-----BEGIN PRIVATE KEY-----")
-            end_pos = private_key.rfind("-----END PRIVATE KEY-----") + len("-----END PRIVATE KEY-----")
-            private_key = private_key[start_pos:end_pos]
+        # 🚨 استخراج المفتاح الصافي وتجاهل النقطة (.) أو الأخطاء في البداية 🚨
+        match = re.search(r"(-----BEGIN PRIVATE KEY-----.+?-----END PRIVATE KEY-----)", raw_key, re.DOTALL)
+        if match:
+            clean_key = match.group(1)
+        else:
+            clean_key = raw_key.strip()
             
-        # 3. إزالة أي علامات تنصيص محيطة بالمفتاح
-        private_key = private_key.strip("'\"")
-        
-        # تحديث المفتاح بعد التنظيف
-        creds_dict["private_key"] = private_key
+        creds_dict["private_key"] = clean_key
 
         # إنشاء الاعتماد والاتصال
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
