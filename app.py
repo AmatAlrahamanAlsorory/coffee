@@ -28,7 +28,7 @@ else:
     GOOGLE_SHEETS_AVAILABLE = False
                     
                     # تحديث المسار في google_sheets_config
-                    import google_sheets_config
+    import google_sheets_config
                     google_sheets_config.CREDENTIALS_FILE = temp_creds_file
             except Exception as e:
                 st.warning(f"⚠️ خطأ في قراءة credentials من secrets: {e}")
