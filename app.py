@@ -5,10 +5,6 @@ import os
 import json
 
 # 📥 استيراد الصفحات المفصولة
-# from tabs.dashboard import render_dashboard
-# from tabs.cashier import render_cashier
-# from tabs.add_product import render_add_product
-
 from dashboard import render_dashboard 
 from cashier import render_cashier
 from add_product import render_add_product 
@@ -18,21 +14,6 @@ from config import APP_TITLE, FILE_NAME, create_backup, COLORS, USE_GOOGLE_SHEET
 # استيراد Google Sheets إذا كان مفعلاً
 if USE_GOOGLE_SHEETS:
     try:
-        from google_sheets_config import get_sales_worksheet, get_products_worksheet
-        GOOGLE_SHEETS_AVAILABLE = True
-    except Exception as e:
-        USE_GOOGLE_SHEETS = False
-        GOOGLE_SHEETS_AVAILABLE = False
-        st.error(f"❌ خطأ في تحميل Google Sheets: {e}")
-else:
-    GOOGLE_SHEETS_AVAILABLE = False
-                    
-                    # تحديث المسار في google_sheets_config
-    import google_sheets_config
-                    google_sheets_config.CREDENTIALS_FILE = temp_creds_file
-            except Exception as e:
-                st.warning(f"⚠️ خطأ في قراءة credentials من secrets: {e}")
-        
         from google_sheets_config import get_sales_worksheet, get_products_worksheet
         GOOGLE_SHEETS_AVAILABLE = True
     except Exception as e:
@@ -351,8 +332,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# FILE_NAME تم تعريفه في config.py
-
 # تهيئة متغيرات الجلسة
 if "current_invoice" not in st.session_state:
     st.session_state.current_invoice = []
@@ -376,7 +355,6 @@ def load_products_data():
     if USE_GOOGLE_SHEETS and GOOGLE_SHEETS_AVAILABLE:
         return load_products_from_google_sheets()
     else:
-        # إذا لم يكن Google Sheets، نستخدم المنتجات الافتراضية
         return pd.DataFrame(config.DEFAULT_PRODUCTS)
 
 def load_sales_from_excel():
@@ -409,7 +387,6 @@ def load_sales_from_google_sheets():
         
         df = pd.DataFrame(data)
         
-        # تصفية الصفوف التي تحتوي على عناوين
         if not df.empty:
             if "التاريخ" in df.columns:
                 df = df[df["التاريخ"] != "التاريخ"]
@@ -431,12 +408,10 @@ def load_products_from_google_sheets():
         data = worksheet.get_all_records()
         
         if not data:
-            # إذا كانت صفحة Menu فارغة، نستخدم المنتجات الافتراضية
             return pd.DataFrame(config.DEFAULT_PRODUCTS)
         
         df = pd.DataFrame(data)
         
-        # إعادة تسمية الأعمدة لتتناسب مع التطبيق
         if not df.empty:
             df = df.rename(columns={
                 "اسم المنتج": "name",
@@ -444,15 +419,12 @@ def load_products_from_google_sheets():
                 "التقييم": "rating"
             })
             
-            # تحويل السعر إلى رقم
             if "price" in df.columns:
                 df["price"] = pd.to_numeric(df["price"], errors='coerce').fillna(15)
             
-            # إضافة عمود الصورة افتراضياً
             if "image" not in df.columns:
                 df["image"] = "https://images.unsplash.com/photo-1577968897966-3d4325b36b61?w=600&q=80"
             
-            # التأكد من وجود عمود name
             if "name" not in df.columns:
                 df["name"] = df.index.astype(str)
         
@@ -484,7 +456,6 @@ def save_invoice_to_excel_file():
             new_total = item["الإجمالي"]
             
             if not product_name or new_qty <= 0 or new_total <= 0:
-                st.error(f"❌ بيانات غير صالحة للمنتج: {product_name}")
                 continue
             
             condition = (df["المنتج"] == product_name) & (df["التاريخ"] == current_date)
@@ -521,67 +492,58 @@ def save_invoice_to_google_sheets():
     """حفظ الفاتورة في Google Sheets (صفحة Sales)"""
     try:
         sales_worksheet = get_sales_worksheet()
-        products_worksheet = get_products_worksheet()
         current_date = datetime.now().strftime("%Y-%m-%d")
         
-        # عداد للمنتجات المضافة
         added_count = 0
         total_amount = 0
         
-        # إضافة كل منتج في الفاتورة كصف جديد في صفحة Sales
         for item in st.session_state.current_invoice:
             product_name = item["المنتج"]
             new_qty = item["الكمية"]
-            product_price = item["السعر"]  # السعر من الفاتورة
+            product_price = item["السعر"]
             
             if not product_name or new_qty <= 0 or product_price <= 0:
                 continue
             
-            # حساب الإجمالي = السعر × الكمية
             new_total = float(product_price) * int(new_qty)
             
-            # إضافة صف جديد في صفحة Sales
             sales_worksheet.append_row([
                 current_date,
                 product_name,
                 int(new_qty),
                 float(new_total),
-                4.5  # تقييم افتراضي
+                4.5
             ])
             
             added_count += 1
             total_amount += new_total
         
-        # تفريغ السلة
         st.session_state.current_invoice = []
         
-        # إعادة تعيين الاتصال لضمان تحديث البيانات
         from google_sheets_config import reset_connection
         reset_connection()
         
-        # عرض رسالة نجاح مع التفاصيل
         st.success(f"✅ تم حفظ {added_count} منتج بإجمالي {total_amount} ريال")
-        
         return True
         
     except Exception as e:
         st.error(f"❌ خطأ في حفظ الفاتورة في Google Sheets: {e}")
         return False
 
-# 🔐 نظام مصادقة بسيط (مؤقتاً للاختبار)
+# 🔐 نظام مصادقة بسيط
 if not st.session_state.authenticated:
     st.title("🔐 نظام المصادقة")
     password = st.text_input("كلمة المرور:", type="password")
     
     if st.button("تسجيل الدخول"):
-        if password == "admin123":  # كلمة مرور افتراضية
+        if password == "admin123":
             st.session_state.authenticated = True
             st.rerun()
         else:
             st.error("❌ كلمة المرور غير صحيحة")
     st.stop()
 
-# 🗂️ إنشاء التبويبات مع استدعاء load_data() داخل كل تبويب لضمان التحديث اللحظي
+# 🗂️ إنشاء التبويبات
 tab1, tab2, tab3, tab4 = st.tabs(["📊 لوحة التحكم", "☕ المنيو والبيع", "➕ إدارة المنتجات", "⚙️ الإعدادات"])
 
 with tab1:
@@ -598,12 +560,12 @@ with tab3:
 with tab4:
     st.markdown('''
         <div style="background: linear-gradient(135deg, #7F5539 0%, #4E3526 100%); 
-                 color: white; 
-                 padding: 25px; 
-                 border-radius: 20px; 
-                 margin-bottom: 30px;
-                 text-align: center;
-                 box-shadow: 0 8px 30px rgba(127, 85, 57, 0.2);">
+                   color: white; 
+                   padding: 25px; 
+                   border-radius: 20px; 
+                   margin-bottom: 30px;
+                   text-align: center;
+                   box-shadow: 0 8px 30px rgba(127, 85, 57, 0.2);">
             <h1 style="color: white; font-size: 2rem; font-weight: 800; margin-bottom: 10px;">⚙️ إعدادات النظام</h1>
             <p style="color: #EDE0D4; font-size: 1.1rem;">إدارة النظام والأدوات المتقدمة</p>
         </div>
@@ -622,11 +584,11 @@ with tab4:
         if USE_GOOGLE_SHEETS and GOOGLE_SHEETS_AVAILABLE:
             st.markdown('''
                 <div style="background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); 
-                         color: white; 
-                         padding: 15px; 
-                         border-radius: 12px; 
-                         margin-bottom: 20px;
-                         text-align: center;">
+                           color: white; 
+                           padding: 15px; 
+                           border-radius: 12px; 
+                           margin-bottom: 20px;
+                           text-align: center;">
                     <div style="font-size: 1.2rem; margin-bottom: 5px;">🌐</div>
                     <div style="font-weight: 700; font-size: 1.1rem;">متصل بـ Google Sheets</div>
                 </div>
@@ -635,16 +597,15 @@ with tab4:
             from google_sheets_config import SHEET_ID
             st.markdown(f'''
                 <div style="background: #F5F0E9; 
-                         padding: 15px; 
-                         border-radius: 12px; 
-                         margin-bottom: 15px;
-                         border-left: 4px solid #7F5539;">
+                           padding: 15px; 
+                           border-radius: 12px; 
+                           margin-bottom: 15px;
+                           border-left: 4px solid #7F5539;">
                     <div style="color: #4E3526; font-weight: 600; margin-bottom: 5px;">معرف الـ Sheet:</div>
                     <div style="color: #7F5539; font-family: monospace; background: #EDE0D4; padding: 8px; border-radius: 8px;">{SHEET_ID}</div>
                 </div>
             ''', unsafe_allow_html=True)
             
-            # عرض عدد السجلات
             try:
                 df_temp = load_sales_data()
                 sales_count = len(df_temp)
@@ -668,10 +629,10 @@ with tab4:
         else:
             st.markdown(f'''
                 <div style="background: #F5F0E9; 
-                         padding: 15px; 
-                         border-radius: 12px; 
-                         margin-bottom: 15px;
-                         border-left: 4px solid #7F5539;">
+                           padding: 15px; 
+                           border-radius: 12px; 
+                           margin-bottom: 15px;
+                           border-left: 4px solid #7F5539;">
                     <div style="color: #4E3526; font-weight: 600; margin-bottom: 5px;">مسار ملف البيانات:</div>
                     <div style="color: #7F5539; font-family: monospace; background: #EDE0D4; padding: 8px; border-radius: 8px;">{FILE_NAME}</div>
                 </div>
@@ -681,24 +642,23 @@ with tab4:
                 file_size = os.path.getsize(FILE_NAME) / 1024
                 st.markdown(f'''
                     <div style="background: #F5F0E9; 
-                             padding: 15px; 
-                             border-radius: 12px; 
-                             margin-bottom: 15px;
-                             border-left: 4px solid #B08968;">
+                               padding: 15px; 
+                               border-radius: 12px; 
+                               margin-bottom: 15px;
+                               border-left: 4px solid #B08968;">
                         <div style="color: #4E3526; font-weight: 600; margin-bottom: 5px;">حجم ملف البيانات:</div>
                         <div style="color: #7F5539; font-size: 1.2rem; font-weight: 700;">{file_size:.2f} كيلوبايت</div>
                     </div>
                 ''', unsafe_allow_html=True)
         
-        # عرض عدد النسخ الاحتياطية
         from config import BACKUP_DIR
         if os.path.exists(BACKUP_DIR):
             backup_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.xlsx')]
             st.markdown(f'''
                 <div style="background: #F5F0E9; 
-                         padding: 15px; 
-                         border-radius: 12px; 
-                         border-left: 4px solid #DDB892;">
+                           padding: 15px; 
+                           border-radius: 12px; 
+                           border-left: 4px solid #DDB892;">
                     <div style="color: #4E3526; font-weight: 600; margin-bottom: 5px;">💾 عدد النسخ الاحتياطية:</div>
                     <div style="color: #7F5539; font-size: 1.2rem; font-weight: 700;">{len(backup_files)}</div>
                 </div>
@@ -714,7 +674,6 @@ with tab4:
                 </h3>
         ''', unsafe_allow_html=True)
         
-        # أزرار الأدوات
         tool_buttons = [
             ("🔄 إنشاء نسخة احتياطية الآن", "إنشاء نسخة احتياطية من جميع البيانات", "#7F5539"),
             ("🗑️ تفريغ ذاكرة التخزين المؤقت", "مسح ذاكرة التخزين المؤقت لتحسين الأداء", "#B08968"),
