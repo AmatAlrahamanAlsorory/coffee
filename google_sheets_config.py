@@ -1,15 +1,18 @@
 """
-ملف إعدادات الاتصال بـ Google Sheets عبر Streamlit Secrets
+ملف إعدادات الاتصال بـ Google Sheets مباشرة من ملف credentials.json
 """
 
 import gspread
 from google.oauth2.service_account import Credentials
-import streamlit as st
+import os
+
+# مسار ملف الاعتماد بجانب الكود مباشرة
+CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "credentials.json")
 
 # معرف الـ Google Sheet
 SHEET_ID = "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg"
 
-# أسماء أوراق العمل داخل الشيت
+# أسماء أوراق العمل
 SALES_WORKSHEET = "Sales"
 PRODUCTS_WORKSHEET = "Menu"
 DAILY_SUMMARY_WORKSHEET = "Daily_Summary"
@@ -24,35 +27,26 @@ _client = None
 _spreadsheet = None
 
 def is_google_sheets_enabled():
-    """التحقق مما إذا كانت أسرار Google Sheets متوفرة في إعدادات التطبيق"""
-    try:
-        return "gcp_service_account" in st.secrets
-    except Exception:
-        return False
+    """التحقق من وجود ملف الـ credentials.json"""
+    return os.path.exists(CREDENTIALS_FILE)
 
 def get_client():
-    """الحصول على عميل Google Sheets باستخدام Streamlit Secrets"""
+    """الحصول على عميل Google Sheets باستخدام ملف الـ JSON مباشرة"""
     global _client
-    
     if _client is not None:
         return _client
     
     if not is_google_sheets_enabled():
-        raise RuntimeError("Google Sheets غير مفعل - يرجى إضافة gcp_service_account في Streamlit Secrets")
+        raise RuntimeError("ملف credentials.json غير موجود!")
     
-    # تحويل بيانات الـ secrets إلى قاموس بايثون متوافق مع جوجل
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
     _client = gspread.authorize(creds)
     return _client
 
 def get_spreadsheet():
-    """الحصول على الـ Spreadsheet"""
     global _spreadsheet
-    
     if _spreadsheet is not None:
         return _spreadsheet
-    
     client = get_client()
     _spreadsheet = client.open_by_key(SHEET_ID)
     return _spreadsheet
@@ -86,7 +80,7 @@ def get_worksheet(worksheet_name, default_headers):
             worksheet.append_row(default_headers)
         return worksheet
     except Exception as e:
-        print(f"خطأ في الاتصال بـ Google Sheets: {e}")
+        print(f"خطأ في الاتصال: {e}")
         raise
 
 def reset_connection():
