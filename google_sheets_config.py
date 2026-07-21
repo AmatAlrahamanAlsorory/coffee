@@ -14,8 +14,8 @@ CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cre
 SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg")
 
 # أسماء أوراق العمل داخل الـ Sheet
-SALES_WORKSHEET = "Sales"              # صفحة المبيعات
-PRODUCTS_WORKSHEET = "Menu"            # صفحة المنيو
+SALES_WORKSHEET = "Sales"             # صفحة المبيعات
+PRODUCTS_WORKSHEET = "Menu"           # صفحة المنيو
 DAILY_SUMMARY_WORKSHEET = "Daily_Summary"  # الملخص اليومي
 CATEGORIES_WORKSHEET = "Categories"    # التصنيفات
 EXPENSES_WORKSHEET = "Expenses"        # المصروفات
@@ -31,9 +31,8 @@ _spreadsheet = None
 _google_sheets_enabled = None
 
 def is_google_sheets_enabled():
-    """التحقق مما إذا كان Google Sheets مفعلاً (لا يُستخدم حالياً - Excel محلي فقط)"""
-    # دائماً False لأننا نستخدم Excel محلي
-    return False
+    """التحقق مما إذا كان Google Sheets مفعلاً بناءً على وجود ملف الاعتماد"""
+    return os.path.exists(CREDENTIALS_FILE)
 
 def get_client():
     """الحصول على عميل Google Sheets (مع التخزين المؤقت)"""
