@@ -1,17 +1,15 @@
 """
-ملف إعدادات الاتصال بـ Google Sheets (معالج تلقائي لخطأ InvalidByte والرموز الزائدة)
+ملف إعدادات الاتصال بـ Google Sheets (يدعم العمل المحلي والسحابي على Streamlit Cloud)
 """
 
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit as st
+import os
 import re
 
 # 1. معرف الـ Google Sheet
-try:
-    SHEET_ID = st.secrets["google"]["sheet_id"]
-except Exception:
-    SHEET_ID = "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg"
+SHEET_ID = "1URic7Z7Gm4fKDYILnH9meYnl25o2E6nbnVizgpXMijg"
 
 # 2. أسماء أوراق العمل
 SALES_WORKSHEET = "Sales"
@@ -28,36 +26,33 @@ SCOPES = [
 
 @st.cache_resource
 def get_client():
-    """الحصول على عميل Google Sheets وتنقيتها من أي رموز غريبة"""
-    try:
-        if "gcp_service_account" not in st.secrets:
-            st.error("❌ لم يتم العثور على [gcp_service_account] في إعدادات Secrets")
-            return None
+    """الاتصال التلقائي: يقرأ من Secrets على السحابة، ومن credentials.json محلياً"""
+    # أولاً: تجربة القراءة من Secrets (Streamlit Cloud)
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            raw_key = str(creds_dict.get("private_key", "")).replace("\\n", "\n")
             
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        
-        # جلب النص الخام للمفتاح
-        raw_key = str(creds_dict.get("private_key", ""))
-        
-        # استبدال \\n بالسطر الجديد الحقيقي
-        raw_key = raw_key.replace("\\n", "\n")
-        
-        # 🚨 استخراج المفتاح الصافي وتجاهل النقطة (.) أو الأخطاء في البداية 🚨
-        match = re.search(r"(-----BEGIN PRIVATE KEY-----.+?-----END PRIVATE KEY-----)", raw_key, re.DOTALL)
-        if match:
-            clean_key = match.group(1)
-        else:
-            clean_key = raw_key.strip()
+            # استخراج المفتاح النظيف
+            match = re.search(r"(-----BEGIN PRIVATE KEY-----.+?-----END PRIVATE KEY-----)", raw_key, re.DOTALL)
+            if match:
+                creds_dict["private_key"] = match.group(1)
             
-        creds_dict["private_key"] = clean_key
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            return gspread.authorize(creds)
+        except Exception as e:
+            st.error(f"❌ خطأ عند الاتصال عبر Secrets: {e}")
 
-        # إنشاء الاعتماد والاتصال
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        return gspread.authorize(creds)
-        
-    except Exception as e:
-        st.error(f"❌ خطأ في إعداد بيانات الاعتماد: {e}")
-        return None
+    # ثانياً: إذا لم تتوفر Secrets، تجربة القراءة من الملف المحلي (Local)
+    if os.path.exists("credentials.json"):
+        try:
+            creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+            return gspread.authorize(creds)
+        except Exception as e:
+            st.error(f"❌ خطأ عند الاتصال عبر credentials.json: {e}")
+
+    st.error("❌ لم يتم العثور على بيانات الاعتماد (لا في Secrets ولا في credentials.json)")
+    return None
 
 def get_spreadsheet():
     """الحصول على ملف الـ Spreadsheet"""
@@ -67,7 +62,7 @@ def get_spreadsheet():
     return None
 
 def get_worksheet(worksheet_name, default_headers):
-    """الحصول على ورقة عمل مع إنشائها تلقائياً إذا لم تكن موجودة"""
+    """الحصول على ورقة عمل أو إنشائها"""
     try:
         spreadsheet = get_spreadsheet()
         if not spreadsheet:
@@ -86,7 +81,7 @@ def get_worksheet(worksheet_name, default_headers):
         return worksheet
         
     except Exception as e:
-        st.error(f"❌ خطأ في الاتصال بصفحة {worksheet_name}: {e}")
+        st.error(f"❌ خطأ في الوصول لورقة {worksheet_name}: {e}")
         return None
 
 def get_sales_worksheet():
@@ -106,4 +101,3 @@ def get_expenses_worksheet():
 
 def reset_connection():
     get_client.clear()
-    st.cache_resource.clear()
