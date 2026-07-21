@@ -4,9 +4,13 @@ from datetime import datetime
 import os
 
 # 📥 استيراد الصفحات المفصولة
-from tabs.dashboard import render_dashboard
-from tabs.cashier import render_cashier
-from tabs.add_product import render_add_product
+# from tabs.dashboard import render_dashboard
+# from tabs.cashier import render_cashier
+# from tabs.add_product import render_add_product
+from dashboard import render_dashboard
+from cashier import render_cashier
+from add_product import render_add_product
+
 import config
 from config import APP_TITLE, FILE_NAME, create_backup, COLORS, USE_GOOGLE_SHEETS
 
