@@ -2,31 +2,43 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import json
 
 # 📥 استيراد الصفحات المفصولة
 # from tabs.dashboard import render_dashboard
 # from tabs.cashier import render_cashier
 # from tabs.add_product import render_add_product
-from dashboard import render_dashboard
-from cashier import render_cashier
-from add_product import render_add_product
 
+from dashboard import render_dashboard 
+from cashier import render_cashier
+from add_product import render_add_product 
 import config
 from config import APP_TITLE, FILE_NAME, create_backup, COLORS, USE_GOOGLE_SHEETS
 
 # استيراد Google Sheets إذا كان مفعلاً
 if USE_GOOGLE_SHEETS:
     try:
-        from google_sheets_config import get_sales_worksheet, get_products_worksheet, is_google_sheets_enabled
-        if not is_google_sheets_enabled():
-            USE_GOOGLE_SHEETS = False
-            st.warning("⚠️ تم تعطيل Google Sheets - سيتم استخدام Excel محلي")
-        else:
-            GOOGLE_SHEETS_AVAILABLE = True
+        from google_sheets_config import get_sales_worksheet, get_products_worksheet
+        GOOGLE_SHEETS_AVAILABLE = True
     except Exception as e:
         USE_GOOGLE_SHEETS = False
         GOOGLE_SHEETS_AVAILABLE = False
-        st.warning(f"⚠️ خطأ في تحميل Google Sheets: {e} - سيتم استخدام Excel محلي")
+        st.error(f"❌ خطأ في تحميل Google Sheets: {e}")
+else:
+    GOOGLE_SHEETS_AVAILABLE = False
+                    
+                    # تحديث المسار في google_sheets_config
+                    import google_sheets_config
+                    google_sheets_config.CREDENTIALS_FILE = temp_creds_file
+            except Exception as e:
+                st.warning(f"⚠️ خطأ في قراءة credentials من secrets: {e}")
+        
+        from google_sheets_config import get_sales_worksheet, get_products_worksheet
+        GOOGLE_SHEETS_AVAILABLE = True
+    except Exception as e:
+        USE_GOOGLE_SHEETS = False
+        GOOGLE_SHEETS_AVAILABLE = False
+        st.error(f"❌ خطأ في تحميل Google Sheets: {e}")
 else:
     GOOGLE_SHEETS_AVAILABLE = False
 
